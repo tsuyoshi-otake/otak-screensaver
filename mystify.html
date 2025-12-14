@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mystify</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background: #000;
+            overflow: hidden;
+        }
+        canvas {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        function resize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        resize();
+        window.addEventListener('resize', resize);
+
+        const TRAIL_LENGTH = 80;
+        const NUM_VERTICES = 4;
+
+        // 共有の色相（全ポリゴンが同じ色）
+        let globalHue = 180;
+        const hueSpeed = 0.05;
+
+        class Polygon {
+            constructor() {
+                this.vertices = [];
+                for (let i = 0; i < NUM_VERTICES; i++) {
+                    this.vertices.push({
+                        x: Math.random() * canvas.width,
+                        y: Math.random() * canvas.height,
+                        vx: (1 + Math.random() * 2) * (Math.random() > 0.5 ? 1 : -1),
+                        vy: (1 + Math.random() * 2) * (Math.random() > 0.5 ? 1 : -1)
+                    });
+                }
+                this.history = [];
+            }
+
+            update() {
+                // 履歴に保存
+                this.history.push({
+                    points: this.vertices.map(v => ({ x: v.x, y: v.y })),
+                    hue: globalHue
+                });
+                if (this.history.length > TRAIL_LENGTH) {
+                    this.history.shift();
+                }
+
+                // 頂点を移動
+                for (const v of this.vertices) {
+                    v.x += v.vx;
+                    v.y += v.vy;
+
+                    if (v.x <= 0) { v.x = 0; v.vx *= -1; }
+                    if (v.x >= canvas.width) { v.x = canvas.width; v.vx *= -1; }
+                    if (v.y <= 0) { v.y = 0; v.vy *= -1; }
+                    if (v.y >= canvas.height) { v.y = canvas.height; v.vy *= -1; }
+                }
+            }
+
+            draw() {
+                // 履歴を描画
+                for (let i = 0; i < this.history.length; i++) {
+                    const alpha = (i + 1) / this.history.length;
+                    const h = this.history[i];
+                    ctx.strokeStyle = `hsla(${h.hue}, 100%, 50%, ${alpha * 0.85})`;
+                    ctx.lineWidth = 1;
+                    ctx.beginPath();
+                    ctx.moveTo(h.points[0].x, h.points[0].y);
+                    for (let j = 1; j < h.points.length; j++) {
+                        ctx.lineTo(h.points[j].x, h.points[j].y);
+                    }
+                    ctx.closePath();
+                    ctx.stroke();
+                }
+
+                // 現在の多角形
+                ctx.strokeStyle = `hsl(${globalHue}, 100%, 50%)`;
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                ctx.moveTo(this.vertices[0].x, this.vertices[0].y);
+                for (let i = 1; i < this.vertices.length; i++) {
+                    ctx.lineTo(this.vertices[i].x, this.vertices[i].y);
+                }
+                ctx.closePath();
+                ctx.stroke();
+            }
+        }
+
+        // 2つの多角形
+        const polygons = [
+            new Polygon(),
+            new Polygon()
+        ];
+
+        // フレームレート制限
+        const TARGET_FPS = 30;
+        const FRAME_INTERVAL = 1000 / TARGET_FPS;
+        let lastFrameTime = 0;
+
+        function animate(currentTime) {
+            requestAnimationFrame(animate);
+
+            if (!currentTime) return;
+            const elapsed = currentTime - lastFrameTime;
+            if (elapsed < FRAME_INTERVAL) return;
+            lastFrameTime = currentTime - (elapsed % FRAME_INTERVAL);
+
+            // 色相を更新
+            globalHue = (globalHue + hueSpeed) % 360;
+
+            ctx.fillStyle = '#000';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            for (const poly of polygons) {
+                poly.update();
+                poly.draw();
+            }
+        }
+
+        requestAnimationFrame(animate);
+    </script>
+</body>
+</html>

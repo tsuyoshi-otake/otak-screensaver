@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Beziers</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background: #000;
+            overflow: hidden;
+        }
+        canvas {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        function resize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        resize();
+        window.addEventListener('resize', resize);
+
+        const TRAIL_LENGTH = 100;
+        const NUM_CURVES = 4;
+
+        class Point {
+            constructor() {
+                this.x = Math.random() * canvas.width;
+                this.y = Math.random() * canvas.height;
+                this.vx = (0.8 + Math.random() * 1.5) * (Math.random() > 0.5 ? 1 : -1);
+                this.vy = (0.8 + Math.random() * 1.5) * (Math.random() > 0.5 ? 1 : -1);
+            }
+
+            update() {
+                this.x += this.vx;
+                this.y += this.vy;
+
+                if (this.x <= 0) { this.x = 0; this.vx *= -1; }
+                if (this.x >= canvas.width) { this.x = canvas.width; this.vx *= -1; }
+                if (this.y <= 0) { this.y = 0; this.vy *= -1; }
+                if (this.y >= canvas.height) { this.y = canvas.height; this.vy *= -1; }
+            }
+        }
+
+        // 連続した曲線を描画するクラス
+        class ContinuousBezier {
+            constructor(hueStart) {
+                this.hue = hueStart;
+                this.hueSpeed = 0.05; // とてもゆっくり色が変化
+                // 連続曲線用の制御点（始点-制御点1-制御点2-終点が次の始点になる）
+                this.points = [];
+                for (let i = 0; i < NUM_CURVES + 1; i++) {
+                    this.points.push(new Point());
+                }
+                this.history = [];
+            }
+
+            update() {
+                // 色相を更新
+                this.hue = (this.hue + this.hueSpeed) % 360;
+
+                // 現在の点と色を保存
+                this.history.push({
+                    pts: this.points.map(p => ({ x: p.x, y: p.y })),
+                    hue: this.hue
+                });
+                if (this.history.length > TRAIL_LENGTH) {
+                    this.history.shift();
+                }
+
+                for (const p of this.points) {
+                    p.update();
+                }
+            }
+
+            draw() {
+                // 履歴を描画
+                for (let i = 0; i < this.history.length; i++) {
+                    const alpha = (i + 1) / this.history.length;
+                    const h = this.history[i];
+                    ctx.strokeStyle = `hsla(${h.hue}, 100%, 50%, ${alpha * 0.85})`;
+                    ctx.lineWidth = 1;
+
+                    const pts = h.pts;
+                    ctx.beginPath();
+                    ctx.moveTo(pts[0].x, pts[0].y);
+
+                    // 連続したベジェ曲線として描画
+                    for (let j = 0; j < pts.length - 1; j++) {
+                        const p0 = pts[j];
+                        const p1 = pts[(j + 1) % pts.length];
+                        const midX = (p0.x + p1.x) / 2;
+                        const midY = (p0.y + p1.y) / 2;
+                        ctx.quadraticCurveTo(p0.x, p0.y, midX, midY);
+                    }
+                    // 最後の点に接続
+                    const last = pts[pts.length - 1];
+                    ctx.quadraticCurveTo(last.x, last.y, pts[0].x, pts[0].y);
+
+                    ctx.stroke();
+                }
+
+                // 現在の曲線
+                ctx.strokeStyle = `hsl(${this.hue}, 100%, 50%)`;
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                ctx.moveTo(this.points[0].x, this.points[0].y);
+
+                for (let j = 0; j < this.points.length - 1; j++) {
+                    const p0 = this.points[j];
+                    const p1 = this.points[(j + 1) % this.points.length];
+                    const midX = (p0.x + p1.x) / 2;
+                    const midY = (p0.y + p1.y) / 2;
+                    ctx.quadraticCurveTo(p0.x, p0.y, midX, midY);
+                }
+                const last = this.points[this.points.length - 1];
+                ctx.quadraticCurveTo(last.x, last.y, this.points[0].x, this.points[0].y);
+
+                ctx.stroke();
+            }
+        }
+
+        // 2つの連続曲線（同じ色）
+        const curves = [
+            new ContinuousBezier(60),
+            new ContinuousBezier(60)
+        ];
+
+        // フレームレート制限（Windows 95風のカクカク感）
+        const TARGET_FPS = 30;
+        const FRAME_INTERVAL = 1000 / TARGET_FPS;
+        let lastFrameTime = 0;
+
+        function animate(currentTime) {
+            requestAnimationFrame(animate);
+
+            const elapsed = currentTime - lastFrameTime;
+            if (elapsed < FRAME_INTERVAL) return;
+            lastFrameTime = currentTime - (elapsed % FRAME_INTERVAL);
+
+            ctx.fillStyle = '#000';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            for (const curve of curves) {
+                curve.update();
+                curve.draw();
+            }
+        }
+
+        requestAnimationFrame(animate);
+    </script>
+</body>
+</html>

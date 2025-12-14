@@ -1,0 +1,85 @@
+{
+  "name": "otak-screensaver",
+  "displayName": "otak-screensaver",
+  "description": "Show retro screensavers (Beziers / Mystify) inside VS Code.",
+  "version": "0.0.1",
+  "publisher": "odangoo",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/tsuyoshi-otake/otak-screensaver"
+  },
+  "bugs": {
+    "url": "https://github.com/tsuyoshi-otake/otak-screensaver/issues"
+  },
+  "homepage": "https://github.com/tsuyoshi-otake/otak-screensaver#readme",
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "otak-screensaver.toggleScreenSaver",
+        "title": "Toggle ScreenSaver"
+      },
+      {
+        "command": "otak-screensaver.showBeziers",
+        "title": "ScreenSaver: Beziers"
+      },
+      {
+        "command": "otak-screensaver.showMystify",
+        "title": "ScreenSaver: Mystify"
+      }
+    ],
+    "configuration": {
+      "title": "Otak ScreenSaver",
+      "properties": {
+        "otakScreensaver.autoStart": {
+          "type": "boolean",
+          "default": false,
+          "description": "Automatically start screensaver after VS Code is idle."
+        },
+        "otakScreensaver.idleMinutes": {
+          "type": "number",
+          "default": 5,
+          "minimum": 1,
+          "description": "Idle time (minutes) before the screensaver starts when autoStart is enabled."
+        },
+        "otakScreensaver.mode": {
+          "type": "string",
+          "default": "random",
+          "enum": [
+            "random",
+            "beziers",
+            "mystify"
+          ],
+          "description": "Which screensaver to show when toggled."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./"
+  },
+  "devDependencies": {
+    "@types/node": "20.x",
+    "@types/vscode": "^1.90.0",
+    "typescript": "^5.7.3"
+  },
+  "files": [
+    "out",
+    "src",
+    "beziers.html",
+    "mystify.html",
+    "LICENSE",
+    "README.md"
+  ]
+}
