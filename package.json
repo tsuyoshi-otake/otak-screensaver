@@ -2,7 +2,7 @@
   "name": "otak-screensaver",
   "displayName": "otak-screensaver",
   "description": "Show retro screensavers (Beziers / Mystify) inside VS Code.",
-  "version": "0.0.1",
+  "version": "0.1.1",
   "publisher": "odangoo",
   "license": "MIT",
   "repository": {
@@ -13,6 +13,7 @@
     "url": "https://github.com/tsuyoshi-otake/otak-screensaver/issues"
   },
   "homepage": "https://github.com/tsuyoshi-otake/otak-screensaver#readme",
+  "icon": "images/otak-screensaver.png",
   "engines": {
     "vscode": "^1.90.0"
   },
@@ -67,7 +68,8 @@
   },
   "scripts": {
     "compile": "tsc -p ./",
-    "watch": "tsc -watch -p ./"
+    "watch": "tsc -watch -p ./",
+    "lint:jp-colon": "node scripts/jp-colon-lint.js"
   },
   "devDependencies": {
     "@types/node": "20.x",
@@ -77,6 +79,7 @@
   "files": [
     "out",
     "src",
+    "images",
     "beziers.html",
     "mystify.html",
     "LICENSE",
