@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Flying Windows</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background: #000;
+            overflow: hidden;
+        }
+        canvas {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        let viewWidth = window.innerWidth;
+        let viewHeight = window.innerHeight;
+        let deviceRatio = window.devicePixelRatio || 1;
+        let baseLogo = null;
+
+        function resize() {
+            viewWidth = window.innerWidth;
+            viewHeight = window.innerHeight;
+            deviceRatio = window.devicePixelRatio || 1;
+            canvas.width = Math.floor(viewWidth * deviceRatio);
+            canvas.height = Math.floor(viewHeight * deviceRatio);
+            canvas.style.width = `${viewWidth}px`;
+            canvas.style.height = `${viewHeight}px`;
+            ctx.setTransform(deviceRatio, 0, 0, deviceRatio, 0, 0);
+            if (baseLogo) {
+                initLogos();
+            }
+        }
+        resize();
+        window.addEventListener('resize', resize);
+
+        const logoImg = new Image();
+
+        const palette = [
+            '#f2f2f2',
+            '#f2f2f2',
+            '#f2f2f2',
+            '#f2f2f2',
+            '#f2f2f2',
+            '#e1e1e1',
+            '#e1e1e1',
+            '#ff3b30',
+            '#ff3b30',
+            '#00d65a',
+            '#00d65a',
+            '#00d0ff',
+            '#b14cff',
+            '#ffd633',
+            '#4d79ff'
+        ];
+
+        const PERSPECTIVE = 840;
+        const BASE_SIZE = 92;
+        const NEAR_Z = 600;
+        const FAR_Z = 6000;
+        const SPEED_MIN = 8.4;
+        const SPEED_MAX = 19.0;
+        const ACCEL_FACTOR = 3.2;
+        const LOGO_DENSITY = 0.00009;
+        const MIN_LOGOS = 140;
+        const MAX_LOGOS = 260;
+
+        let logoAspect = 0.8;
+        const tintCache = new Map();
+
+        function buildLogoAtlas() {
+            const targetWidth = 220;
+            const targetHeight = Math.round(targetWidth * (logoImg.height / logoImg.width));
+            baseLogo = document.createElement('canvas');
+            baseLogo.width = targetWidth;
+            baseLogo.height = targetHeight;
+
+            const bctx = baseLogo.getContext('2d');
+            bctx.imageSmoothingEnabled = true;
+            bctx.clearRect(0, 0, targetWidth, targetHeight);
+            bctx.drawImage(logoImg, 0, 0, targetWidth, targetHeight);
+
+            logoAspect = baseLogo.height / baseLogo.width;
+            tintCache.clear();
+            for (const color of palette) {
+                if (!tintCache.has(color)) {
+                    tintCache.set(color, tintLogo(baseLogo, color));
+                }
+            }
+        }
+
+        function tintLogo(source, color) {
+            const tinted = document.createElement('canvas');
+            tinted.width = source.width;
+            tinted.height = source.height;
+            const tctx = tinted.getContext('2d');
+            tctx.drawImage(source, 0, 0);
+            tctx.globalCompositeOperation = 'source-in';
+            tctx.fillStyle = color;
+            tctx.fillRect(0, 0, tinted.width, tinted.height);
+            return tinted;
+        }
+
+        function pickColor() {
+            return palette[Math.floor(Math.random() * palette.length)];
+        }
+
+        function desiredLogoCount() {
+            const count = Math.round(viewWidth * viewHeight * LOGO_DENSITY);
+            return Math.max(MIN_LOGOS, Math.min(MAX_LOGOS, count));
+        }
+
+        function randomDepth() {
+            const t = Math.random() ** 0.85;
+            return NEAR_Z + t * (FAR_Z - NEAR_Z);
+        }
+
+        function pickWorldPosition() {
+            const targetX = (Math.random() - 0.5) * viewWidth;
+            const targetY = (Math.random() - 0.5) * viewHeight;
+            const factor = FAR_Z / PERSPECTIVE;
+            return {
+                x: targetX * factor,
+                y: targetY * factor
+            };
+        }
+
+        class FlyingLogo {
+            constructor(isInit) {
+                this.reset(isInit);
+            }
+
+            reset(isInit = false) {
+                this.z = isInit ? randomDepth() : FAR_Z + Math.random() * 500;
+                const position = pickWorldPosition();
+                this.worldX = position.x;
+                this.worldY = position.y;
+                this.speed = SPEED_MIN + Math.random() * (SPEED_MAX - SPEED_MIN);
+                this.alpha = 0.6 + Math.random() * 0.4;
+                this.color = pickColor();
+                this.image = tintCache.get(this.color) || null;
+            }
+
+            update(step) {
+                const depthT = (this.z - NEAR_Z) / (FAR_Z - NEAR_Z);
+                const accel = 1 + (1 - depthT) * ACCEL_FACTOR;
+                this.z -= this.speed * step * accel;
+
+                if (this.z < NEAR_Z) {
+                    this.reset();
+                }
+            }
+
+            draw() {
+                if (!baseLogo || !this.image) return;
+
+                const scale = PERSPECTIVE / this.z;
+                const size = BASE_SIZE * scale;
+                if (size < 2) return;
+
+                const screenX = viewWidth / 2 + this.worldX * scale;
+                const screenY = viewHeight / 2 + this.worldY * scale;
+
+                const height = size * logoAspect;
+
+                const depthT = (this.z - NEAR_Z) / (FAR_Z - NEAR_Z);
+                const distanceAlpha = 0.2 + (1 - depthT) * 0.8;
+
+                ctx.save();
+                ctx.translate(screenX, screenY);
+                ctx.globalAlpha = this.alpha * distanceAlpha;
+                ctx.imageSmoothingEnabled = size > 80;
+
+                ctx.drawImage(
+                    this.image,
+                    -size / 2,
+                    -height / 2,
+                    size,
+                    height
+                );
+
+                ctx.restore();
+            }
+        }
+
+        let logos = [];
+        function initLogos() {
+            const count = desiredLogoCount();
+            logos = [];
+            for (let i = 0; i < count; i++) {
+                logos.push(new FlyingLogo(true));
+            }
+        }
+
+        let lastFrameTime = 0;
+        const FRAME_INTERVAL = 1000 / 24;
+        function animate(time) {
+            requestAnimationFrame(animate);
+            if (!baseLogo) return;
+
+            if (!lastFrameTime) {
+                lastFrameTime = time;
+            }
+            const elapsed = time - lastFrameTime;
+            if (elapsed < FRAME_INTERVAL) {
+                return;
+            }
+            const delta = Math.min(80, elapsed);
+            const step = delta / 16.666;
+            lastFrameTime = time - (elapsed % FRAME_INTERVAL);
+
+            ctx.fillStyle = 'rgb(0, 0, 0)';
+            ctx.fillRect(0, 0, viewWidth, viewHeight);
+
+            logos.sort((a, b) => b.z - a.z);
+
+            for (const logo of logos) {
+                logo.update(step);
+                logo.draw();
+            }
+        }
+
+        logoImg.onload = () => {
+            buildLogoAtlas();
+            initLogos();
+            lastFrameTime = 0;
+            requestAnimationFrame(animate);
+        };
+        logoImg.src = '{{screensaversUri}}/windows.png';
+    </script>
+</body>
+</html>

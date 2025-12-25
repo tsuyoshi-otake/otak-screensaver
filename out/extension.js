@@ -39,8 +39,9 @@ const vscode = __importStar(require("vscode"));
 const fs = __importStar(require("fs"));
 const path = __importStar(require("path"));
 const SCREENSAVERS = {
-    beziers: { title: 'Beziers', filename: 'beziers.html' },
-    mystify: { title: 'Mystify', filename: 'mystify.html' },
+    beziers: { title: 'Beziers', filename: 'screensavers/beziers.html' },
+    mystify: { title: 'Mystify', filename: 'screensavers/mystify.html' },
+    flyingWindows: { title: 'Flying Windows', filename: 'screensavers/flying-windows.html' },
 };
 const INTERNAL_ACTIVITY_IGNORE_MS = 500;
 const WEBVIEW_ACTIVITY_MESSAGE_TYPE = 'otakScreensaver.userActivity';
@@ -161,14 +162,14 @@ function activate(context) {
             return;
         }
         show(getConfiguredMode());
-    }), vscode.commands.registerCommand('otak-screensaver.showBeziers', () => show('beziers')), vscode.commands.registerCommand('otak-screensaver.showMystify', () => show('mystify')));
+    }), vscode.commands.registerCommand('otak-screensaver.showBeziers', () => show('beziers')), vscode.commands.registerCommand('otak-screensaver.showMystify', () => show('mystify')), vscode.commands.registerCommand('otak-screensaver.showFlyingWindows', () => show('flyingWindows')));
     restartIdleTimer();
 }
 function deactivate() { }
 function getConfiguredMode() {
     const config = vscode.workspace.getConfiguration('otakScreensaver');
     const mode = config.get('mode', 'random');
-    if (mode === 'beziers' || mode === 'mystify' || mode === 'random')
+    if (mode === 'beziers' || mode === 'mystify' || mode === 'flyingWindows' || mode === 'random')
         return mode;
     return 'random';
 }
@@ -187,13 +188,17 @@ function getIdleMs() {
     return Math.max(1, getIdleMinutes()) * 60_000;
 }
 function resolveScreenSaver(mode) {
-    if (mode === 'beziers' || mode === 'mystify')
+    if (mode === 'beziers' || mode === 'mystify' || mode === 'flyingWindows')
         return mode;
-    return Math.random() < 0.5 ? 'beziers' : 'mystify';
+    const ids = ['beziers', 'mystify', 'flyingWindows'];
+    return ids[Math.floor(Math.random() * ids.length)];
 }
 function getWebviewHtml(extensionUri, webview, filename) {
     const htmlPath = path.join(extensionUri.fsPath, filename);
     let html = fs.readFileSync(htmlPath, 'utf8');
+    // Replace resource URI placeholders
+    const screensaversUri = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, 'screensavers'));
+    html = html.replace(/\{\{screensaversUri\}\}/g, screensaversUri.toString());
     const nonce = getNonce();
     const csp = [
         `default-src 'none'`,

@@ -37,6 +37,10 @@
       {
         "command": "otak-screensaver.showMystify",
         "title": "ScreenSaver: Mystify"
+      },
+      {
+        "command": "otak-screensaver.showFlyingWindows",
+        "title": "ScreenSaver: Flying Windows"
       }
     ],
     "configuration": {
@@ -59,7 +63,8 @@
           "enum": [
             "random",
             "beziers",
-            "mystify"
+            "mystify",
+            "flyingWindows"
           ],
           "description": "Which screensaver to show when toggled."
         }
@@ -80,8 +85,7 @@
     "out",
     "src",
     "images",
-    "beziers.html",
-    "mystify.html",
+    "screensavers",
     "LICENSE",
     "README.md"
   ]
