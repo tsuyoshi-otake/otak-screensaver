@@ -48,7 +48,7 @@
       "properties": {
         "otakScreensaver.autoStart": {
           "type": "boolean",
-          "default": false,
+          "default": true,
           "description": "Automatically start screensaver after VS Code is idle."
         },
         "otakScreensaver.idleMinutes": {

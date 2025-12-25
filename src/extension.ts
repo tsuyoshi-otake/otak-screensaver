@@ -178,7 +178,7 @@ function getConfiguredMode(): ScreenSaverMode {
 
 function getAutoStartEnabled(): boolean {
 	const config = vscode.workspace.getConfiguration('otakScreensaver');
-	return config.get<boolean>('autoStart', false);
+	return config.get<boolean>('autoStart', true);
 }
 
 function getIdleMinutes(): number {

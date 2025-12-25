@@ -24,12 +24,16 @@
 
         let viewWidth = window.innerWidth;
         let viewHeight = window.innerHeight;
+        let halfWidth = viewWidth * 0.5;
+        let halfHeight = viewHeight * 0.5;
         let deviceRatio = window.devicePixelRatio || 1;
         let baseLogo = null;
 
         function resize() {
             viewWidth = window.innerWidth;
             viewHeight = window.innerHeight;
+            halfWidth = viewWidth * 0.5;
+            halfHeight = viewHeight * 0.5;
             deviceRatio = window.devicePixelRatio || 1;
             canvas.width = Math.floor(viewWidth * deviceRatio);
             canvas.height = Math.floor(viewHeight * deviceRatio);
@@ -67,6 +71,8 @@
         const BASE_SIZE = 92;
         const NEAR_Z = 600;
         const FAR_Z = 6000;
+        const DEPTH_RANGE = FAR_Z - NEAR_Z;
+        const INV_DEPTH_RANGE = 1 / DEPTH_RANGE;
         const SPEED_MIN = 8.4;
         const SPEED_MAX = 19.0;
         const ACCEL_FACTOR = 3.2;
@@ -75,7 +81,9 @@
         const MAX_LOGOS = 260;
 
         let logoAspect = 0.8;
+        let baseHeight = BASE_SIZE * logoAspect;
         const tintCache = new Map();
+        let lastSmoothing = true;
 
         function buildLogoAtlas() {
             const targetWidth = 220;
@@ -90,6 +98,7 @@
             bctx.drawImage(logoImg, 0, 0, targetWidth, targetHeight);
 
             logoAspect = baseLogo.height / baseLogo.width;
+            baseHeight = BASE_SIZE * logoAspect;
             tintCache.clear();
             for (const color of palette) {
                 if (!tintCache.has(color)) {
@@ -121,7 +130,7 @@
 
         function randomDepth() {
             const t = Math.random() ** 0.85;
-            return NEAR_Z + t * (FAR_Z - NEAR_Z);
+            return NEAR_Z + t * DEPTH_RANGE;
         }
 
         function pickWorldPosition() {
@@ -148,16 +157,22 @@
                 this.alpha = 0.6 + Math.random() * 0.4;
                 this.color = pickColor();
                 this.image = tintCache.get(this.color) || null;
+                const depthT = (this.z - NEAR_Z) * INV_DEPTH_RANGE;
+                this.distanceAlpha = 0.2 + (1 - depthT) * 0.8;
             }
 
             update(step) {
-                const depthT = (this.z - NEAR_Z) / (FAR_Z - NEAR_Z);
+                const depthT = (this.z - NEAR_Z) * INV_DEPTH_RANGE;
                 const accel = 1 + (1 - depthT) * ACCEL_FACTOR;
                 this.z -= this.speed * step * accel;
 
                 if (this.z < NEAR_Z) {
                     this.reset();
+                    return;
                 }
+
+                const nextDepthT = (this.z - NEAR_Z) * INV_DEPTH_RANGE;
+                this.distanceAlpha = 0.2 + (1 - nextDepthT) * 0.8;
             }
 
             draw() {
@@ -167,28 +182,25 @@
                 const size = BASE_SIZE * scale;
                 if (size < 2) return;
 
-                const screenX = viewWidth / 2 + this.worldX * scale;
-                const screenY = viewHeight / 2 + this.worldY * scale;
+                const screenX = halfWidth + this.worldX * scale;
+                const screenY = halfHeight + this.worldY * scale;
 
-                const height = size * logoAspect;
+                const height = baseHeight * scale;
 
-                const depthT = (this.z - NEAR_Z) / (FAR_Z - NEAR_Z);
-                const distanceAlpha = 0.2 + (1 - depthT) * 0.8;
-
-                ctx.save();
-                ctx.translate(screenX, screenY);
-                ctx.globalAlpha = this.alpha * distanceAlpha;
-                ctx.imageSmoothingEnabled = size > 80;
+                const smoothing = size > 80;
+                if (smoothing !== lastSmoothing) {
+                    ctx.imageSmoothingEnabled = smoothing;
+                    lastSmoothing = smoothing;
+                }
+                ctx.globalAlpha = this.alpha * this.distanceAlpha;
 
                 ctx.drawImage(
                     this.image,
-                    -size / 2,
-                    -height / 2,
+                    screenX - size / 2,
+                    screenY - height / 2,
                     size,
                     height
                 );
-
-                ctx.restore();
             }
         }
 
@@ -218,12 +230,16 @@
             const step = delta / 16.666;
             lastFrameTime = time - (elapsed % FRAME_INTERVAL);
 
+            ctx.globalAlpha = 1;
             ctx.fillStyle = 'rgb(0, 0, 0)';
             ctx.fillRect(0, 0, viewWidth, viewHeight);
 
-            logos.sort((a, b) => b.z - a.z);
+            if (logos.length > 1) {
+                logos.sort((a, b) => b.z - a.z);
+            }
 
-            for (const logo of logos) {
+            for (let i = 0; i < logos.length; i++) {
+                const logo = logos[i];
                 logo.update(step);
                 logo.draw();
             }
