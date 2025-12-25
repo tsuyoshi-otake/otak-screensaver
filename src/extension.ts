@@ -13,8 +13,11 @@ const SCREENSAVERS: Record<ScreenSaverId, { title: string; filename: string }> =
 
 const INTERNAL_ACTIVITY_IGNORE_MS = 500;
 const WEBVIEW_ACTIVITY_MESSAGE_TYPE = 'otakScreensaver.userActivity';
+const SETTINGS_MIGRATION_VERSION = 1;
 
-export function activate(context: vscode.ExtensionContext) {
+export async function activate(context: vscode.ExtensionContext) {
+	await migrateSettings(context);
+
 	const statusItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
 	statusItem.text = '$(vm-running)';
 	statusItem.command = 'otak-screensaver.toggleScreenSaver';
@@ -234,4 +237,32 @@ function getNonce(): string {
 		text += possible.charAt(Math.floor(Math.random() * possible.length));
 	}
 	return text;
+}
+
+async function migrateSettings(context: vscode.ExtensionContext): Promise<void> {
+	const current = context.globalState.get<number>('settingsMigrationVersion', 0);
+	if (current >= SETTINGS_MIGRATION_VERSION) return;
+
+	const config = vscode.workspace.getConfiguration('otakScreensaver');
+	await overwriteSetting(config, 'autoStart', true);
+	await context.globalState.update('settingsMigrationVersion', SETTINGS_MIGRATION_VERSION);
+}
+
+async function overwriteSetting<T>(
+	config: vscode.WorkspaceConfiguration,
+	key: string,
+	value: T,
+): Promise<void> {
+	const inspected = config.inspect<T>(key);
+	if (!inspected) return;
+
+	const targets: vscode.ConfigurationTarget[] = [];
+	if (inspected.workspaceFolderValue !== undefined) targets.push(vscode.ConfigurationTarget.WorkspaceFolder);
+	if (inspected.workspaceValue !== undefined) targets.push(vscode.ConfigurationTarget.Workspace);
+	if (inspected.globalValue !== undefined) targets.push(vscode.ConfigurationTarget.Global);
+	if (targets.length === 0) targets.push(vscode.ConfigurationTarget.Global);
+
+	for (const target of targets) {
+		await config.update(key, value, target);
+	}
 }

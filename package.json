@@ -1,8 +1,8 @@
 {
   "name": "otak-screensaver",
   "displayName": "otak-screensaver",
-  "description": "Show retro screensavers (Beziers / Mystify) inside VS Code.",
-  "version": "0.1.3",
+  "description": "Show retro screensavers (Beziers / Mystify / Flying Windows) inside VS Code.",
+  "version": "0.1.4",
   "publisher": "odangoo",
   "license": "MIT",
   "repository": {
@@ -65,6 +65,12 @@
             "beziers",
             "mystify",
             "flyingWindows"
+          ],
+          "enumDescriptions": [
+            "Random (Beziers / Mystify / Flying Windows)",
+            "Beziers",
+            "Mystify",
+            "Flying Windows"
           ],
           "description": "Which screensaver to show when toggled."
         }
