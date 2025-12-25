@@ -2,7 +2,7 @@
   "name": "otak-screensaver",
   "displayName": "otak-screensaver",
   "description": "Show retro screensavers (Beziers / Mystify) inside VS Code.",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "publisher": "odangoo",
   "license": "MIT",
   "repository": {
