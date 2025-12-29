@@ -6,29 +6,29 @@
   <img src="images/flying-windows.png" width="32%" alt="Flying Windows">
 </p>
 
-VS Code の中でスクリーンセーバー（Beziers / Mystify / Flying Windows）を表示します。
+Run classic screensavers (Beziers / Mystify / Flying Windows) right inside VS Code.
 
-## 使い方
+## Usage
 
 ![alt text](images/02.png)
 
-- ステータスバーのアイコンを押すと表示/終了（トグル）
-- コマンドパレットからも起動できます
+- Click the status bar icon to toggle on/off
+- Launch from the Command Palette
   - `Toggle ScreenSaver`
   - `ScreenSaver: Beziers`
   - `ScreenSaver: Mystify`
   - `ScreenSaver: Flying Windows`
-- 自動起動を有効にすると、一定時間操作が無いと自動で起動します（操作すると終了します）
+- Enable auto start to launch after inactivity (stops on input)
 
-## 設定
+## Settings
 
 - `otakScreensaver.mode`: `random` / `beziers` / `mystify` / `flyingWindows`
-- `otakScreensaver.autoStart`: 自動起動（true/false、デフォルト true）
-- `otakScreensaver.idleMinutes`: 自動起動までの待ち時間（分、デフォルト 5）
+- `otakScreensaver.autoStart`: auto start (true/false, default true)
+- `otakScreensaver.idleMinutes`: idle time before auto start in minutes (default 5)
 
-## 開発
+## Development
 
-1. このフォルダを VS Code で開く
-2. `F5`（Extension Development Host）で起動
-3. 自動コンパイルしたい場合は `npm install` → `Run Extension (Watch)`
-4. 日本語の文末コロン（`:` / `：`）チェック: `npm run lint:jp-colon`
+1. Open this folder in VS Code
+2. Press `F5` to launch the Extension Development Host
+3. For auto-compile: `npm install` then `Run Extension (Watch)`
+4. Japanese sentence-ending colon check: `npm run lint:jp-colon`
