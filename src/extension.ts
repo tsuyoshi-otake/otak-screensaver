@@ -13,6 +13,8 @@ const SCREENSAVERS: Record<ScreenSaverId, { title: string; filename: string }> =
 
 const INTERNAL_ACTIVITY_IGNORE_MS = 500;
 const WEBVIEW_ACTIVITY_MESSAGE_TYPE = 'otakScreensaver.userActivity';
+const CODESPACES_KEEPALIVE_CONTEXT_KEY = 'otakScreensaver.codespacesKeepAliveHeartbeat';
+const CODESPACES_KEEPALIVE_DEFAULT_INTERVAL_MINUTES = 3;
 const SETTINGS_MIGRATION_VERSION = 1;
 
 export async function activate(context: vscode.ExtensionContext) {
@@ -27,12 +29,20 @@ export async function activate(context: vscode.ExtensionContext) {
 		const mode = getConfiguredMode();
 		const autoStart = getAutoStartEnabled();
 		const idleMinutes = getIdleMinutes();
+		const keepAlive = getCodespacesKeepAliveEnabled();
+		const keepAliveMinutes = getCodespacesKeepAliveIntervalMinutes();
+		const codespaces = isCodespacesEnvironment();
 		const tooltip = new vscode.MarkdownString();
 		tooltip.isTrusted = true;
 		tooltip.supportThemeIcons = true;
 		tooltip.appendMarkdown('$(vm-running) Otak ScreenSaver\n\n---\n\n');
 		tooltip.appendMarkdown(`mode: \`${mode}\`\n\n`);
 		tooltip.appendMarkdown(`autoStart: \`${autoStart ? 'on' : 'off'}\`${autoStart ? ` (${idleMinutes} min)` : ''}\n\n`);
+		tooltip.appendMarkdown(
+			`codespacesKeepAlive: \`${keepAlive ? 'on' : 'off'}\`${keepAlive ? ` (${keepAliveMinutes} min)` : ''}${
+				codespaces ? '' : ' _(Codespaces only)_'
+			}\n\n`,
+		);
 		tooltip.appendMarkdown('$(gear) [Open Settings](command:workbench.action.openSettings?%22otakScreensaver%22)');
 		statusItem.tooltip = tooltip;
 	};
@@ -44,7 +54,9 @@ export async function activate(context: vscode.ExtensionContext) {
 
 	let currentPanel: vscode.WebviewPanel | undefined;
 	let idleTimer: NodeJS.Timeout | undefined;
+	let codespacesKeepAliveTimer: NodeJS.Timeout | undefined;
 	let ignoreActivityUntil = 0;
+	let sendingCodespacesKeepAlive = false;
 
 	const setIgnoreActivityFor = (ms: number) => {
 		ignoreActivityUntil = Date.now() + ms;
@@ -73,6 +85,33 @@ export async function activate(context: vscode.ExtensionContext) {
 			setIgnoreActivityFor(INTERNAL_ACTIVITY_IGNORE_MS);
 			show(getConfiguredMode());
 		}, idleMs);
+	};
+
+	const restartCodespacesKeepAlive = () => {
+		if (codespacesKeepAliveTimer) {
+			clearInterval(codespacesKeepAliveTimer);
+			codespacesKeepAliveTimer = undefined;
+		}
+
+		if (!isCodespacesEnvironment()) return;
+		if (!getCodespacesKeepAliveEnabled()) return;
+
+		const heartbeat = async () => {
+			if (sendingCodespacesKeepAlive) return;
+			sendingCodespacesKeepAlive = true;
+			try {
+				await sendCodespacesKeepAliveHeartbeat(context);
+			} catch (error) {
+				console.warn('[otak-screensaver] Codespaces keep-alive heartbeat failed', error);
+			} finally {
+				sendingCodespacesKeepAlive = false;
+			}
+		};
+
+		void heartbeat();
+		codespacesKeepAliveTimer = setInterval(() => {
+			void heartbeat();
+		}, getCodespacesKeepAliveIntervalMs());
 	};
 
 	const stopScreensaver = () => {
@@ -143,6 +182,7 @@ export async function activate(context: vscode.ExtensionContext) {
 			if (e.affectsConfiguration('otakScreensaver')) {
 				updateTooltip();
 				restartIdleTimer();
+				restartCodespacesKeepAlive();
 			}
 		}),
 	);
@@ -165,9 +205,20 @@ export async function activate(context: vscode.ExtensionContext) {
 		vscode.commands.registerCommand('otak-screensaver.showBeziers', () => show('beziers')),
 		vscode.commands.registerCommand('otak-screensaver.showMystify', () => show('mystify')),
 		vscode.commands.registerCommand('otak-screensaver.showFlyingWindows', () => show('flyingWindows')),
+		new vscode.Disposable(() => {
+			if (idleTimer) {
+				clearTimeout(idleTimer);
+				idleTimer = undefined;
+			}
+			if (codespacesKeepAliveTimer) {
+				clearInterval(codespacesKeepAliveTimer);
+				codespacesKeepAliveTimer = undefined;
+			}
+		}),
 	);
 
 	restartIdleTimer();
+	restartCodespacesKeepAlive();
 }
 
 export function deactivate() {}
@@ -193,6 +244,41 @@ function getIdleMinutes(): number {
 
 function getIdleMs(): number {
 	return Math.max(1, getIdleMinutes()) * 60_000;
+}
+
+function getCodespacesKeepAliveEnabled(): boolean {
+	const config = vscode.workspace.getConfiguration('otakScreensaver');
+	return config.get<boolean>('codespacesKeepAlive', true);
+}
+
+function getCodespacesKeepAliveIntervalMinutes(): number {
+	const config = vscode.workspace.getConfiguration('otakScreensaver');
+	const minutes = config.get<number>(
+		'codespacesKeepAliveIntervalMinutes',
+		CODESPACES_KEEPALIVE_DEFAULT_INTERVAL_MINUTES,
+	);
+	if (typeof minutes !== 'number' || !Number.isFinite(minutes) || minutes <= 0) {
+		return CODESPACES_KEEPALIVE_DEFAULT_INTERVAL_MINUTES;
+	}
+	return minutes;
+}
+
+function getCodespacesKeepAliveIntervalMs(): number {
+	return Math.max(1, getCodespacesKeepAliveIntervalMinutes()) * 60_000;
+}
+
+function isCodespacesEnvironment(): boolean {
+	const codespaces = process.env.CODESPACES;
+	if (typeof codespaces === 'string' && codespaces.toLowerCase() === 'true') return true;
+
+	const forwardingDomain = process.env.GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN;
+	return typeof forwardingDomain === 'string' && forwardingDomain.length > 0;
+}
+
+async function sendCodespacesKeepAliveHeartbeat(context: vscode.ExtensionContext): Promise<void> {
+	await vscode.workspace.fs.createDirectory(context.globalStorageUri);
+	await vscode.workspace.fs.stat(context.globalStorageUri);
+	await vscode.commands.executeCommand('setContext', CODESPACES_KEEPALIVE_CONTEXT_KEY, Date.now());
 }
 
 function resolveScreenSaver(mode: ScreenSaverMode): ScreenSaverId {

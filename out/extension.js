@@ -45,6 +45,8 @@ const SCREENSAVERS = {
 };
 const INTERNAL_ACTIVITY_IGNORE_MS = 500;
 const WEBVIEW_ACTIVITY_MESSAGE_TYPE = 'otakScreensaver.userActivity';
+const CODESPACES_KEEPALIVE_CONTEXT_KEY = 'otakScreensaver.codespacesKeepAliveHeartbeat';
+const CODESPACES_KEEPALIVE_DEFAULT_INTERVAL_MINUTES = 3;
 const SETTINGS_MIGRATION_VERSION = 1;
 async function activate(context) {
     await migrateSettings(context);
@@ -56,12 +58,16 @@ async function activate(context) {
         const mode = getConfiguredMode();
         const autoStart = getAutoStartEnabled();
         const idleMinutes = getIdleMinutes();
+        const keepAlive = getCodespacesKeepAliveEnabled();
+        const keepAliveMinutes = getCodespacesKeepAliveIntervalMinutes();
+        const codespaces = isCodespacesEnvironment();
         const tooltip = new vscode.MarkdownString();
         tooltip.isTrusted = true;
         tooltip.supportThemeIcons = true;
         tooltip.appendMarkdown('$(vm-running) Otak ScreenSaver\n\n---\n\n');
         tooltip.appendMarkdown(`mode: \`${mode}\`\n\n`);
         tooltip.appendMarkdown(`autoStart: \`${autoStart ? 'on' : 'off'}\`${autoStart ? ` (${idleMinutes} min)` : ''}\n\n`);
+        tooltip.appendMarkdown(`codespacesKeepAlive: \`${keepAlive ? 'on' : 'off'}\`${keepAlive ? ` (${keepAliveMinutes} min)` : ''}${codespaces ? '' : ' _(Codespaces only)_'}\n\n`);
         tooltip.appendMarkdown('$(gear) [Open Settings](command:workbench.action.openSettings?%22otakScreensaver%22)');
         statusItem.tooltip = tooltip;
     };
@@ -70,7 +76,9 @@ async function activate(context) {
     context.subscriptions.push(statusItem);
     let currentPanel;
     let idleTimer;
+    let codespacesKeepAliveTimer;
     let ignoreActivityUntil = 0;
+    let sendingCodespacesKeepAlive = false;
     const setIgnoreActivityFor = (ms) => {
         ignoreActivityUntil = Date.now() + ms;
     };
@@ -98,6 +106,34 @@ async function activate(context) {
             setIgnoreActivityFor(INTERNAL_ACTIVITY_IGNORE_MS);
             show(getConfiguredMode());
         }, idleMs);
+    };
+    const restartCodespacesKeepAlive = () => {
+        if (codespacesKeepAliveTimer) {
+            clearInterval(codespacesKeepAliveTimer);
+            codespacesKeepAliveTimer = undefined;
+        }
+        if (!isCodespacesEnvironment())
+            return;
+        if (!getCodespacesKeepAliveEnabled())
+            return;
+        const heartbeat = async () => {
+            if (sendingCodespacesKeepAlive)
+                return;
+            sendingCodespacesKeepAlive = true;
+            try {
+                await sendCodespacesKeepAliveHeartbeat(context);
+            }
+            catch (error) {
+                console.warn('[otak-screensaver] Codespaces keep-alive heartbeat failed', error);
+            }
+            finally {
+                sendingCodespacesKeepAlive = false;
+            }
+        };
+        void heartbeat();
+        codespacesKeepAliveTimer = setInterval(() => {
+            void heartbeat();
+        }, getCodespacesKeepAliveIntervalMs());
     };
     const stopScreensaver = () => {
         if (!currentPanel)
@@ -150,6 +186,7 @@ async function activate(context) {
         if (e.affectsConfiguration('otakScreensaver')) {
             updateTooltip();
             restartIdleTimer();
+            restartCodespacesKeepAlive();
         }
     }));
     vscode.window.onDidChangeActiveTextEditor(() => handleUserActivity(), undefined, context.subscriptions);
@@ -164,8 +201,18 @@ async function activate(context) {
             return;
         }
         show(getConfiguredMode());
-    }), vscode.commands.registerCommand('otak-screensaver.showBeziers', () => show('beziers')), vscode.commands.registerCommand('otak-screensaver.showMystify', () => show('mystify')), vscode.commands.registerCommand('otak-screensaver.showFlyingWindows', () => show('flyingWindows')));
+    }), vscode.commands.registerCommand('otak-screensaver.showBeziers', () => show('beziers')), vscode.commands.registerCommand('otak-screensaver.showMystify', () => show('mystify')), vscode.commands.registerCommand('otak-screensaver.showFlyingWindows', () => show('flyingWindows')), new vscode.Disposable(() => {
+        if (idleTimer) {
+            clearTimeout(idleTimer);
+            idleTimer = undefined;
+        }
+        if (codespacesKeepAliveTimer) {
+            clearInterval(codespacesKeepAliveTimer);
+            codespacesKeepAliveTimer = undefined;
+        }
+    }));
     restartIdleTimer();
+    restartCodespacesKeepAlive();
 }
 function deactivate() { }
 function getConfiguredMode() {
@@ -188,6 +235,33 @@ function getIdleMinutes() {
 }
 function getIdleMs() {
     return Math.max(1, getIdleMinutes()) * 60_000;
+}
+function getCodespacesKeepAliveEnabled() {
+    const config = vscode.workspace.getConfiguration('otakScreensaver');
+    return config.get('codespacesKeepAlive', true);
+}
+function getCodespacesKeepAliveIntervalMinutes() {
+    const config = vscode.workspace.getConfiguration('otakScreensaver');
+    const minutes = config.get('codespacesKeepAliveIntervalMinutes', CODESPACES_KEEPALIVE_DEFAULT_INTERVAL_MINUTES);
+    if (typeof minutes !== 'number' || !Number.isFinite(minutes) || minutes <= 0) {
+        return CODESPACES_KEEPALIVE_DEFAULT_INTERVAL_MINUTES;
+    }
+    return minutes;
+}
+function getCodespacesKeepAliveIntervalMs() {
+    return Math.max(1, getCodespacesKeepAliveIntervalMinutes()) * 60_000;
+}
+function isCodespacesEnvironment() {
+    const codespaces = process.env.CODESPACES;
+    if (typeof codespaces === 'string' && codespaces.toLowerCase() === 'true')
+        return true;
+    const forwardingDomain = process.env.GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN;
+    return typeof forwardingDomain === 'string' && forwardingDomain.length > 0;
+}
+async function sendCodespacesKeepAliveHeartbeat(context) {
+    await vscode.workspace.fs.createDirectory(context.globalStorageUri);
+    await vscode.workspace.fs.stat(context.globalStorageUri);
+    await vscode.commands.executeCommand('setContext', CODESPACES_KEEPALIVE_CONTEXT_KEY, Date.now());
 }
 function resolveScreenSaver(mode) {
     if (mode === 'beziers' || mode === 'mystify' || mode === 'flyingWindows')
