@@ -2,7 +2,7 @@
   "name": "otak-screensaver",
   "displayName": "otak-screensaver",
   "description": "Show retro screensavers (Beziers / Mystify / Flying Windows) inside VS Code.",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "publisher": "odangoo",
   "license": "MIT",
   "repository": {
@@ -56,6 +56,11 @@
           "default": 5,
           "minimum": 1,
           "description": "Idle time (minutes) before the screensaver starts when autoStart is enabled."
+        },
+        "otakScreensaver.preventDisplaySleep": {
+          "type": "boolean",
+          "default": true,
+          "description": "Best effort: request a screen wake lock while the screensaver is open to reduce display sleep."
         },
         "otakScreensaver.codespacesKeepAlive": {
           "type": "boolean",

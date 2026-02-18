@@ -58,6 +58,7 @@ async function activate(context) {
         const mode = getConfiguredMode();
         const autoStart = getAutoStartEnabled();
         const idleMinutes = getIdleMinutes();
+        const preventDisplaySleep = getPreventDisplaySleepEnabled();
         const keepAlive = getCodespacesKeepAliveEnabled();
         const keepAliveMinutes = getCodespacesKeepAliveIntervalMinutes();
         const codespaces = isCodespacesEnvironment();
@@ -67,6 +68,7 @@ async function activate(context) {
         tooltip.appendMarkdown('$(vm-running) Otak ScreenSaver\n\n---\n\n');
         tooltip.appendMarkdown(`mode: \`${mode}\`\n\n`);
         tooltip.appendMarkdown(`autoStart: \`${autoStart ? 'on' : 'off'}\`${autoStart ? ` (${idleMinutes} min)` : ''}\n\n`);
+        tooltip.appendMarkdown(`preventDisplaySleep: \`${preventDisplaySleep ? 'on' : 'off'}\` _(best effort)_\n\n`);
         tooltip.appendMarkdown(`codespacesKeepAlive: \`${keepAlive ? 'on' : 'off'}\`${keepAlive ? ` (${keepAliveMinutes} min)` : ''}${codespaces ? '' : ' _(Codespaces only)_'}\n\n`);
         tooltip.appendMarkdown('$(gear) [Open Settings](command:workbench.action.openSettings?%22otakScreensaver%22)');
         statusItem.tooltip = tooltip;
@@ -180,7 +182,7 @@ async function activate(context) {
             currentPanel.title = `ScreenSaver: ${title}`;
             currentPanel.reveal(vscode.ViewColumn.Active);
         }
-        currentPanel.webview.html = getWebviewHtml(context.extensionUri, currentPanel.webview, filename);
+        currentPanel.webview.html = getWebviewHtml(context.extensionUri, currentPanel.webview, filename, getPreventDisplaySleepEnabled());
     };
     context.subscriptions.push(vscode.workspace.onDidChangeConfiguration((e) => {
         if (e.affectsConfiguration('otakScreensaver')) {
@@ -236,6 +238,10 @@ function getIdleMinutes() {
 function getIdleMs() {
     return Math.max(1, getIdleMinutes()) * 60_000;
 }
+function getPreventDisplaySleepEnabled() {
+    const config = vscode.workspace.getConfiguration('otakScreensaver');
+    return config.get('preventDisplaySleep', true);
+}
 function getCodespacesKeepAliveEnabled() {
     const config = vscode.workspace.getConfiguration('otakScreensaver');
     return config.get('codespacesKeepAlive', true);
@@ -269,7 +275,7 @@ function resolveScreenSaver(mode) {
     const ids = ['beziers', 'mystify', 'flyingWindows'];
     return ids[Math.floor(Math.random() * ids.length)];
 }
-function getWebviewHtml(extensionUri, webview, filename) {
+function getWebviewHtml(extensionUri, webview, filename, preventDisplaySleep) {
     const htmlPath = path.join(extensionUri.fsPath, filename);
     let html = fs.readFileSync(htmlPath, 'utf8');
     // Replace resource URI placeholders
@@ -284,7 +290,7 @@ function getWebviewHtml(extensionUri, webview, filename) {
     ].join('; ');
     html = html.replace(/<head>/i, `<head>\n\t<meta http-equiv="Content-Security-Policy" content="${csp}">`);
     html = html.replace(/<script(?![^>]*\bnonce=)([^>]*)>/gi, `<script nonce="${nonce}"$1>`);
-    const exitOnActivityScript = `\n<script nonce="${nonce}">\n(() => {\n\tconst vscode = acquireVsCodeApi();\n\tlet sent = false;\n\tconst send = () => {\n\t\tif (sent) return;\n\t\tsent = true;\n\t\tvscode.postMessage({ type: '${WEBVIEW_ACTIVITY_MESSAGE_TYPE}' });\n\t};\n\twindow.addEventListener('mousemove', send, { passive: true });\n\twindow.addEventListener('mousedown', send, { passive: true });\n\twindow.addEventListener('keydown', send);\n\twindow.addEventListener('wheel', send, { passive: true });\n\twindow.addEventListener('touchstart', send, { passive: true });\n})();\n</script>\n`;
+    const exitOnActivityScript = `\n<script nonce="${nonce}">\n(() => {\n\tconst vscode = acquireVsCodeApi();\n\tconst preventDisplaySleep = ${preventDisplaySleep ? 'true' : 'false'};\n\tlet sent = false;\n\tlet wakeLock = null;\n\n\tconst send = () => {\n\t\tif (sent) return;\n\t\tsent = true;\n\t\tvscode.postMessage({ type: '${WEBVIEW_ACTIVITY_MESSAGE_TYPE}' });\n\t};\n\n\tconst requestWakeLock = async () => {\n\t\tif (!preventDisplaySleep) return;\n\t\tif (!('wakeLock' in navigator)) return;\n\t\tif (document.visibilityState !== 'visible') return;\n\t\tif (wakeLock && !wakeLock.released) return;\n\t\ttry {\n\t\t\twakeLock = await navigator.wakeLock.request('screen');\n\t\t\twakeLock.addEventListener('release', () => {\n\t\t\t\twakeLock = null;\n\t\t\t});\n\t\t} catch (error) {\n\t\t\tconsole.debug('[otak-screensaver] Failed to acquire wake lock', error);\n\t\t}\n\t};\n\n\tconst releaseWakeLock = async () => {\n\t\tif (!wakeLock) return;\n\t\ttry {\n\t\t\tawait wakeLock.release();\n\t\t} catch {\n\t\t\t// Ignore release failures.\n\t\t} finally {\n\t\t\twakeLock = null;\n\t\t}\n\t};\n\n\twindow.addEventListener('mousemove', send, { passive: true });\n\twindow.addEventListener('mousedown', send, { passive: true });\n\twindow.addEventListener('keydown', send);\n\twindow.addEventListener('wheel', send, { passive: true });\n\twindow.addEventListener('touchstart', send, { passive: true });\n\twindow.addEventListener('focus', () => { void requestWakeLock(); });\n\twindow.addEventListener('blur', () => { void releaseWakeLock(); });\n\twindow.addEventListener('beforeunload', () => { void releaseWakeLock(); });\n\tdocument.addEventListener('visibilitychange', () => {\n\t\tif (document.visibilityState === 'visible') {\n\t\t\tvoid requestWakeLock();\n\t\t\treturn;\n\t\t}\n\t\tvoid releaseWakeLock();\n\t});\n\n\tvoid requestWakeLock();\n})();\n</script>\n`;
     if (/<\/body>/i.test(html)) {
         html = html.replace(/<\/body>/i, `${exitOnActivityScript}</body>`);
     }
