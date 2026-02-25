@@ -38,6 +38,7 @@ exports.deactivate = deactivate;
 const vscode = __importStar(require("vscode"));
 const fs = __importStar(require("fs"));
 const path = __importStar(require("path"));
+const cp = __importStar(require("child_process"));
 const SCREENSAVERS = {
     beziers: { title: 'Beziers', filename: 'screensavers/beziers.html' },
     mystify: { title: 'Mystify', filename: 'screensavers/mystify.html' },
@@ -47,6 +48,7 @@ const INTERNAL_ACTIVITY_IGNORE_MS = 500;
 const WEBVIEW_ACTIVITY_MESSAGE_TYPE = 'otakScreensaver.userActivity';
 const CODESPACES_KEEPALIVE_CONTEXT_KEY = 'otakScreensaver.codespacesKeepAliveHeartbeat';
 const CODESPACES_KEEPALIVE_DEFAULT_INTERVAL_MINUTES = 3;
+const CODESPACES_KEEPALIVE_PROCESS_MARKER = 'otak-screensaver-keepalive';
 const SETTINGS_MIGRATION_VERSION = 1;
 async function activate(context) {
     await migrateSettings(context);
@@ -80,7 +82,6 @@ async function activate(context) {
     let idleTimer;
     let codespacesKeepAliveTimer;
     let ignoreActivityUntil = 0;
-    let sendingCodespacesKeepAlive = false;
     const setIgnoreActivityFor = (ms) => {
         ignoreActivityUntil = Date.now() + ms;
     };
@@ -114,27 +115,14 @@ async function activate(context) {
             clearInterval(codespacesKeepAliveTimer);
             codespacesKeepAliveTimer = undefined;
         }
-        if (!isCodespacesEnvironment())
+        if (!isCodespacesEnvironment() || !getCodespacesKeepAliveEnabled()) {
+            stopCodespacesKeepAliveProcess();
             return;
-        if (!getCodespacesKeepAliveEnabled())
-            return;
-        const heartbeat = async () => {
-            if (sendingCodespacesKeepAlive)
-                return;
-            sendingCodespacesKeepAlive = true;
-            try {
-                await sendCodespacesKeepAliveHeartbeat(context);
-            }
-            catch (error) {
-                console.warn('[otak-screensaver] Codespaces keep-alive heartbeat failed', error);
-            }
-            finally {
-                sendingCodespacesKeepAlive = false;
-            }
-        };
-        void heartbeat();
+        }
+        void startCodespacesKeepAliveProcess();
+        // Periodically check if the process is still alive and restart if needed.
         codespacesKeepAliveTimer = setInterval(() => {
-            void heartbeat();
+            void startCodespacesKeepAliveProcess();
         }, getCodespacesKeepAliveIntervalMs());
     };
     const stopScreensaver = () => {
@@ -264,10 +252,31 @@ function isCodespacesEnvironment() {
     const forwardingDomain = process.env.GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN;
     return typeof forwardingDomain === 'string' && forwardingDomain.length > 0;
 }
-async function sendCodespacesKeepAliveHeartbeat(context) {
-    await vscode.workspace.fs.createDirectory(context.globalStorageUri);
-    await vscode.workspace.fs.stat(context.globalStorageUri);
+function isCodespacesKeepAliveRunning() {
+    return new Promise((resolve) => {
+        cp.exec(`pgrep -f "${CODESPACES_KEEPALIVE_PROCESS_MARKER}"`, (err) => resolve(!err));
+    });
+}
+async function startCodespacesKeepAliveProcess() {
+    if (await isCodespacesKeepAliveRunning()) {
+        console.log('[otak-screensaver] Codespaces keepalive already running.');
+        return;
+    }
+    const proc = cp.spawn('bash', [
+        '-c',
+        `while true; do sleep 300; echo "${CODESPACES_KEEPALIVE_PROCESS_MARKER}: $(date)"; done`,
+    ], {
+        detached: true,
+        stdio: 'ignore',
+    });
+    proc.unref();
+    console.log('[otak-screensaver] Codespaces keepalive started, PID:', proc.pid);
     await vscode.commands.executeCommand('setContext', CODESPACES_KEEPALIVE_CONTEXT_KEY, Date.now());
+}
+function stopCodespacesKeepAliveProcess() {
+    cp.exec(`pkill -f "${CODESPACES_KEEPALIVE_PROCESS_MARKER}"`, () => {
+        console.log('[otak-screensaver] Codespaces keepalive stopped.');
+    });
 }
 function resolveScreenSaver(mode) {
     if (mode === 'beziers' || mode === 'mystify' || mode === 'flyingWindows')

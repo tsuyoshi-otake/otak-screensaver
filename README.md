@@ -26,8 +26,10 @@ Run classic screensavers (Beziers / Mystify / Flying Windows) right inside VS Co
 - `otakScreensaver.autoStart`: auto start (true/false, default true)
 - `otakScreensaver.idleMinutes`: idle time before auto start in minutes (default 5)
 - `otakScreensaver.preventDisplaySleep`: best effort screen wake lock while screensaver is open (true/false, default true)
-- `otakScreensaver.codespacesKeepAlive`: periodic keep-alive heartbeat for GitHub Codespaces (true/false, default true)
-- `otakScreensaver.codespacesKeepAliveIntervalMinutes`: heartbeat interval in minutes when keep-alive is enabled (default 3)
+- `otakScreensaver.codespacesKeepAlive`: run a background keep-alive process for GitHub Codespaces to prevent idle timeout (true/false, default true)
+- `otakScreensaver.codespacesKeepAliveIntervalMinutes`: interval in minutes to check the keep-alive process is running (default 3)
+
+> **Note (Codespaces):** When keep-alive is enabled, a background shell process runs continuously to prevent the Codespace from timing out. Remember to stop the Codespace manually when you are done to avoid unnecessary usage.
 
 ## Development
 
