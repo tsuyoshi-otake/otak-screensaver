@@ -99,12 +99,14 @@
     "lint:jp-colon": "node scripts/jp-colon-lint.js",
     "vscode:prepublish": "npm run compile",
     "package:vsix": "vsce package",
-    "deploy": "vsce publish --skip-duplicate"
+    "deploy": "vsce publish --skip-duplicate",
+    "deploy:ovsx": "ovsx publish --skip-duplicate"
   },
   "devDependencies": {
     "@types/node": "20.x",
     "@types/vscode": "^1.90.0",
     "@vscode/vsce": "^3.9.2",
+    "ovsx": "^0.10.12",
     "typescript": "^5.7.3"
   },
   "files": [
